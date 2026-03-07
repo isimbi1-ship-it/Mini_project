@@ -1,0 +1,156 @@
+---
+title: "MiniProject1"
+author: "Isimbi"
+format: pdf
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| include: FALSE
+
+library(tidyverse)
+library(tidytext)
+library(textdata)
+library(wordcloud)
+library(wordcloud2)
+library(viridis)
+library(ggthemes)
+library(gutenbergr)
+library(ggraph)
+library(igraph)
+get_stopwords(source = "smart")   
+smart_stopwords <- get_stopwords(source = "smart")
+bing_sentiments <- get_sentiments(lexicon = "bing")
+
+##dataset
+barack <- read_csv("https://joeroith.github.io/264_spring_2026/Data/tweets_potus.csv")
+ 
+michelle <- read_csv("https://joeroith.github.io/264_spring_2026/Data/tweets_flotus.csv")
+
+tweets <- bind_rows(barack |> 
+                      mutate(person = "Barack"),
+                    michelle |> 
+                      mutate(person = "Michelle")) |>
+  mutate(timestamp = ymd_hms(timestamp))
+```
+
+## First couple tweets
+
+As a frequent Twitter (now X) user, I was curious to explore how a presidential couple used the platform while in office. This project analyzes tweets posted by President Barack Obama and First Lady Michelle Obama during the final years of President Obama's presidency. By analyzing their tweet history, this project aims to identify patterns in their communication styles and the themes they emphasized when engaging with the public.
+
+```{r}
+## selecting only the relevant variables
+tweets_tidy <- tweets |>
+  mutate(hour = parse_number(str_extract(timestamp,"\\s\\d{2}(?=:)")),
+         year = parse_number(str_extract(timestamp,"\\d{4}")),
+         month = parse_number(str_extract(timestamp,"(?<=-)\\d{2}(?=-)")), 
+         day = parse_number(str_extract(timestamp,"\\d{2}(?=\\s)"))
+         )|>
+  select(person,text,hour,day,month,year)
+```
+
+## Tweet counts
+
+I would like to see who between President Obama and Michelle tweeted the most.
+
+```{r}
+ tweets_tidy |>
+  mutate(
+    clean_text = text |>
+      str_to_lower() |>
+      str_replace_all("[^a-z\\s]", ""),
+    word_count = str_count(clean_text, "\\w+")
+  ) |>
+  group_by(person, year) |>
+  summarize(
+    tweet_count = n(),
+    word_count = sum(word_count),
+    .groups = "drop"
+  )
+```
+
+There is an imbalance in the time frame between the two accounts because the dataset contains several more years of tweets from Michelle Obama than from President Obama. As a result, Michelle’s total tweet count is much higher. However, even during the overlapping years of the dataset, Michelle consistently posts more frequently. Her tweet output appears to be several times greater than President Obama’s, which suggest that she communicated more using the platform.
+
+## Tweeting time
+
+As someone who treats x as her newspaper, that means I spend my mornings and evenings scrolling and sometimes tweeting. I want to see what time of the day the ex presidential couple usually tweeted.
+
+```{r}
+tweets_tidy |>
+ggplot(aes(x = hour,y= person, fill = person)) +
+  geom_boxplot() +
+  labs(
+  title = "Tweeting Time Distribution by Person",
+  x = "Hour of Day",
+  y = "Person"
+)
+```
+
+This is a horizontal box plot comparing the tweeting time Distribution of President Obama and Michelle. The box of each person has a different color, President Obama's is coral and Michelle's is teal.The x-axis represents the hour of day from 0 to 24, and the y-axis shows the person. Both individuals show high activity in afternoons and evenings. Their median tweet times around hour 5:00 Pm. President Barack's distribution is slightly more condensed between hours 4pm and 8pm, while Michelle's box is wider, ranging roughly from 2pm to 8pm. Both of them have several outlier points in the early morning hours between midnight and 6 am.
+
+## Themes
+
+Next we will be looking at the 15 most common words used by each one to see the popular themes.
+
+```{r}
+tweets_tidy|>
+  mutate(line = row_number()) |>
+  unnest_tokens(word, text, token = "words")  |>
+  anti_join(smart_stopwords, by = "word") |>
+  count(person, word, sort = TRUE) |>
+  group_by(person) |>
+  slice_max(n, n = 15) |>
+  ggplot(aes(x = fct_reorder(word, n), y = n, fill = person)) +
+  geom_col() +
+  coord_flip() +
+  facet_wrap(~person, scales = "free")
+```
+
+This figure contains two bar charts comparing the most frequent words used in tweets by President Obama and Michelle Obama after removing common stopwords. Each bar represents a word, and the length of the bar shows how often that word appears in their tweets. In president Obama’s tweets, common terms include words which indicate links shared in tweets like https, along with words like america, people, health, and change. In Michelle Obama’s tweets, frequent words also include words that relate to shared links like https and rt,along with words like lady,flotus, education, girls, and school. Overall, the chart shows that both President Obama and Michelle accounts frequently share links. Michelle Obama’s tweets often references education and youth initiatives, while Barack Obama’s tweets more frequently reference national issues and broader civic themes.
+
+## Sentiment analysis
+
+Exploring the general feel of both accounts
+
+```{r}
+
+tweets_tidy |>
+  unnest_tokens(word, text) |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(person, sentiment, word, sort = TRUE) |>
+  group_by(person, sentiment) |>
+  slice_max(n, n = 5) |>
+  ungroup() |>
+  ggplot(aes(x = reorder_within(word, n, sentiment), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  facet_wrap(person ~ sentiment, scales = "free") +
+  scale_x_reordered() +
+  labs(
+  title = "Most Common Positive and Negative Words in Obama Tweets",
+  x = "w=Word",
+  y = "Frequency"
+  )
+```
+
+This a faceted bar char showing the top five Positive and Negative Words most tweeted by President Obama and Michelle. The visualization is divided into four quadrants. President Obama's negative and positive words, and Michelle's negative and positive words. The x-axis shows the frequency of word usage, all facets have different ranges but the positive words have a greater range compared to the negative ones. The y-axis lists specific words which dominate each person's unique vocabulary. For both president Obama and Michel, the frequency of positive words is greater than that of negative words.
+
+```{r}
+
+tweets_tidy|>
+  unnest_tokens(word, text, token = "words") |>
+  inner_join(bing_sentiments, by = "word") |>
+  count(person, sentiment) |>
+  ggplot(aes(person, n, fill = sentiment)) +
+  geom_col(position = "fill") +
+  labs(title = "Sentiment Comparison Across Stories")
+
+```
+
+This is a stacked bar chart showing the proportion of positive and negative sentiment by person. The y-axis represents the proportion of sentiment words, ranging from 0 to 1.0. Both individuals show a very high proportion of positive sentiment represented by teal compared to negative sentiment represented by coral. Michelle’s bar shows a slightly higher percentage of positive words than president Obama’s, though both are overwhelmingly positive which reflects the formal and optimistic tone of their public communications.
+
+## Conclusion
+
+This analysis compared the Twitter activity of President Barack Obama and Michelle Obama during the final years of President Obama's presidency.The analysis revealed that both individuals tended to tweet during the same time and that Michelle Obama tweeted more frequently. Word frequency analysis and sentiment analysis revealed common optimistic language but differences in thematic focus. President Obama’s tweets often referenced national issues and civic engagement, while Michelle Obama’s tweets emphasized education and youth initiatives.
