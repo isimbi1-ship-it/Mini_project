@@ -1,0 +1,235 @@
+---
+title: "Mini-project2"
+author: "Isimbi"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r}
+library(httr2)
+library(tidyverse)
+library(jsonlite)
+
+# 1. Create the request
+req <- request("https://www.fruityvice.com/api/fruit/all") 
+
+# 2. Perform the request and parse the JSON
+resp <- req %>% 
+  req_perform() %>% 
+  resp_body_json()
+
+# 3. Turn the list into a tidy tibble
+fruit_data <- tibble(data = resp) %>%
+  unnest_wider(data) %>%
+  unnest_wider(nutritions) # Flatten the nested nutrition list
+
+print(fruit_data)
+```
+
+
+```{r}
+library(httr2)
+library(tidyverse)
+library(jsonlite)
+
+# --- CUSTOM FUNCTION ---
+# Requirement: "at least one custom function"
+# This extracts the birth year and calculates age, handling NA cases.
+calc_award_age <- function(birth_date, award_year) {
+  # If birth_date is missing, return NA to prevent errors
+  if (is.na(birth_date)) return(NA_real_)
+  
+  birth_year <- as.numeric(substr(birth_date, 1, 4))
+  age <- as.numeric(award_year) - birth_year
+  return(age)
+}
+
+# --- 1. ACQUIRE DATA ---
+# We use req_retry() to prevent that 502 error you saw earlier!
+req <- request("https://api.nobelprize.org/2.1/laureates") %>%
+  req_url_query(limit = 50) %>%
+  req_retry(max_tries = 3)
+
+resp <- req %>% 
+  req_perform() %>% 
+  resp_body_json()
+
+# --- 2. TIDY DATA ---
+laureates_tidy <- tibble(raw = resp$laureates) %>%
+  unnest_wider(raw) %>%
+  # Laureates can have multiple prizes, so we unnest that list
+  unnest_longer(nobelPrizes) %>%
+  # FIX: Use names_sep = "_" to solve the "links" duplication error
+  unnest_wider(nobelPrizes, names_sep = "_") %>%
+  
+  # Select the correct variables (note the nobelPrizes_ prefix)
+  select(
+    id, 
+    name = fullName, 
+    gender, 
+    birth_info = birth, 
+    award_year = nobelPrizes_awardYear, 
+    category = nobelPrizes_categoryFullName
+  ) %>%
+  # Clean up the nested name/date fields using map_chr (Iteration!)
+  mutate(
+    name = map_chr(name, ~ .x$en %||% NA_character_),
+    category = map_chr(category, ~ .x$en %||% NA_character_),
+    # Handle the birth date which is nested inside birth_info
+    birth_date = map_chr(birth_info, ~ .x$date %||% NA_character_),
+    # Apply our custom function!
+    age_at_award = map2_dbl(birth_date, award_year, calc_award_age)
+  ) %>%
+  # Remove the raw birth_info list column so we can save to CSV
+  select(-birth_info)
+
+# --- 3. SAVE DATA ---
+# Requirement: "formed using write_csv()"
+if (!dir.exists("data")) dir.create("data")
+write_csv(laureates_tidy, "data/cleaned_nobel_laureates.csv")
+
+# Quick check of the final tidy tibble
+print(laureates_tidy)
+```
+
+```{r}
+# --- STAGE III: ENHANCED TIDYING ---
+
+laureates_tidy <- tibble(raw = resp$laureates) %>%
+  unnest_wider(raw) %>%
+  unnest_longer(nobelPrizes) %>%
+  unnest_wider(nobelPrizes, names_sep = "_") %>%
+  
+  # Extract names and countries
+  mutate(
+    name           = map_chr(fullName, ~ .x$en %||% NA_character_),
+    category       = map_chr(nobelPrizes_categoryFullName, ~ .x$en %||% NA_character_),
+    award_year     = as.numeric(nobelPrizes_awardYear),
+    birth_date     = map_chr(birth, ~ .x$date %||% NA_character_),
+    
+    # Grab Birth Country
+    birth_country  = map_chr(birth, ~ .x$place$country$en %||% NA_character_)
+  ) %>%
+  
+  # Apply your custom function for age
+  mutate(
+    age_at_award = map2_dbl(birth_date, award_year, calc_award_age)
+  )
+
+# --- NEW: COUNTING WINS BY COUNTRY ---
+# We create a summary table of how many prizes each country has won
+country_counts <- laureates_tidy %>%
+  filter(!is.na(birth_country)) %>%
+  count(birth_country, name = "total_country_wins")
+
+# --- COMBINING DATA ---
+# We join the counts back to the main table
+final_nobel_data <- laureates_tidy %>%
+  left_join(country_counts, by = "birth_country") %>%
+  select(
+    id, 
+    name, 
+    birth_country, 
+    total_country_wins, # Now you have the "number" per country
+    award_year, 
+    category, 
+    age_at_award
+  )
+
+# Save this enhanced version
+write_csv(final_nobel_data, "data/nobel_with_country_stats.csv")
+
+# Look at the top 10 countries by win count
+print(country_counts %>% arrange(desc(total_country_wins)))
+```
+
+```{r}
+# Project 2: Nobel Prize Data Acquisition
+# Stage III Submission
+# Partner 1 & Partner 2
+
+library(tidyverse)
+library(httr2)
+library(jsonlite)
+
+# --- 1. CUSTOM FUNCTION ---
+# Requirement: "Your quarto file should contain at least one custom function"
+# This function calculates the age of the laureate at the time of their award.
+calc_award_age <- function(birth_date, award_year) {
+  # Handle missing data or organizations (which have no birth date)
+  if (is.na(birth_date) || birth_date == "") {
+    return(NA_real_)
+  }
+  # Extract year from YYYY-MM-DD
+  birth_year <- as.numeric(substr(birth_date, 1, 4))
+  age <- as.numeric(award_year) - birth_year
+  return(age)
+}
+
+# --- 2. DATA ACQUISITION ---
+# Requirement: "APIs (using httr or httr2)"
+# We set limit to 1000 to get the full historical record.
+print("Connecting to Nobel API...")
+req <- request("https://api.nobelprize.org/2.1/laureates") %>%
+  req_url_query(limit = 1000) %>% 
+  req_retry(max_tries = 5) # Crucial for 502 Bad Gateway errors
+
+resp <- req %>% 
+  req_perform() %>% 
+  resp_body_json()
+
+# --- 3. TIDYING & ITERATION ---
+# Requirement: "create a tidy tibble" and "iteration techniques"
+laureates_raw <- tibble(raw = resp$laureates) %>%
+  unnest_wider(raw) %>%
+  # Handle multiple prizes per person
+  unnest_longer(nobelPrizes) %>%
+  # Use names_sep to avoid the "links" column duplication error
+  unnest_wider(nobelPrizes, names_sep = "_") 
+
+# Process columns and apply custom function using purrr iteration
+laureates_tidy <- laureates_raw %>%
+  mutate(
+    name          = map_chr(fullName, ~ .x$en %||% NA_character_),
+    category      = map_chr(nobelPrizes_categoryFullName, ~ .x$en %||% NA_character_),
+    award_year    = as.numeric(nobelPrizes_awardYear),
+    birth_date    = map_chr(birth, ~ .x$date %||% NA_character_),
+    # Reach into nested list for Birth Country
+    birth_country = map_chr(birth, ~ .x$place$country$en %||% NA_character_),
+    # Apply custom function via iteration
+    age_at_award  = map2_dbl(birth_date, award_year, calc_award_age)
+  )
+
+# --- 4. COMBINING WITH COUNTRY STATS ---
+# Create a summary of wins per country of origin
+country_stats <- laureates_tidy %>%
+  filter(!is.na(birth_country)) %>%
+  count(birth_country, name = "total_country_wins")
+
+# Join the count back to the main data
+final_data <- laureates_tidy %>%
+  left_join(country_stats, by = "birth_country") %>%
+  select(
+    id, 
+    name, 
+    gender, 
+    birth_country, 
+    total_country_wins, 
+    award_year, 
+    category, 
+    age_at_award
+  )
+
+# --- 5. SAVE OUTPUT ---
+# Requirement: "at least one .csv file (formed using write_csv())"
+if (!dir.exists("data")) dir.create("data")
+write_csv(final_data, "data/final_nobel_analysis.csv")
+
+print("Success! Tidy data with 1000+ observations saved to data/folder.")
+glimpse(final_data)
+```
+

@@ -1,0 +1,177 @@
+---
+title: " R Tip of the Day"
+subtitle: "broom 🧹 package"
+author: "Mutoni Henriette Isimbi"
+date: "12, May, 2026"
+format:
+  revealjs: 
+    slide-number: true
+    theme: serif
+    chalkboard: 
+      buttons: true
+    preview-links: auto
+editor_options: 
+  chunk_output_type: console
+title-slide-attributes:
+  data-background-color: "#89CFF0"
+  data-color: "#003366"
+---
+
+```{r}
+library(tidyverse)
+library(broom)
+library(gapminder)
+```
+
+##  {auto-animate="true" background="#89CFF0"}
+
+::: {style="margin-top: 200px; font-size: 2.5em; color: black;"}
+An introduction to broom 🧹
+:::
+
+## What is broom? {auto-animate="true" background="#89CFF0"}
+
+-   broom is a package that converts statistical model output into tidy data frames
+
+- This makes results easier to:
+    -   visualize
+    -   combine
+    -   export
+-   Works well with:
+      `dplyr`, `ggplot2` and `purrr`
+      
+## broom Functions {auto-animate="true" background="#89CFF0"}
+
+The three main functions are:
+
+| Function    | Purpose                   |
+|-------------|---------------------------|
+| tidy()    | creates tidy coefficient tables       |
+| glance()  | summarizes model performance  |
+| augment() | adds predictions and residuals |
+
+
+## Why Use broom? {auto-animate="true" background="#89CFF0"}
+
+Without `broom`:
+
+```{r}
+#| echo: true
+#| code-line-numbers: "1|3" 
+model <- lm(lifeExp ~ gdpPercap, data = gapminder)
+
+summary(model)
+```
+
+-   Output is messy and difficult to manipulate
+
+## tidy() {auto-animate="true" background="#89CFF0"}
+
+```{r}
+#| echo: true
+#| code-line-numbers: "1|3" 
+model <- lm(lifeExp ~ gdpPercap, data = gapminder)
+
+tidy(model)
+```
+
+-   Each coefficient becomes a row
+
+# tidy() {auto-animate="true" background="#89CFF0"}
+
+```{r}
+#| echo: true
+#| code-line-numbers: "1|2|3"
+tidy(model) |>
+  select("term","estimate")|>
+  filter(term=="gdpPercap")
+```
+
+-   Easy to filter and visualize
+
+## glance() {auto-animate="true" background="#89CFF0"}
+
+```{r}
+#| echo: true
+glance(model)
+```
+
+- Returns one row model summaries
+
+## augment() {auto-animate="true" background="#89CFF0"}
+
+```{r}
+#| echo: true
+augment(model)
+```
+
+- Adds  fitted values and  residuals back onto the original dataset.
+
+## broom + ggplot2 {auto-animate="true" background="#89CFF0"}
+
+```{r}
+#| echo: true
+augment(model) |>
+  ggplot(aes(lifeExp, .fitted)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, 
+              intercept = 0,
+              color = "red"
+  ) +
+  labs(
+    title = "Actual vs Predicted",
+    x = "Actual Life Expectancy",
+    y = "Predicted Life Expectancy"
+  )
+```
+
+
+## Comparing models {auto-animate="true" background="#89CFF0"}
+
+
+```{r}
+#| echo: true
+model_log <- lm(lifeExp ~ log(gdpPercap), data = gapminder)
+augment(model_log) |>
+  ggplot(aes(x = lifeExp, y = .fitted)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(  slope = 1,  intercept = 0, color = "red",
+    linewidth = 1
+  ) +
+  labs(
+    title = "Actual vs Predicted Life Expectancy",
+    x = "Actual Life Expectancy",
+    y = "Predicted Life Expectancy"
+  )
+```
+
+
+## Summary  {auto-animate="true" background="#89CFF0"}
+
+::: incremental
+-   `tidy()` creates tidy coefficient tables
+-   `glance()` summarizes model performance
+-   `augment()` adds predictions and residuals
+:::
+
+
+## Real-World Uses {auto-animate="true" background="#89CFF0"}
+
+-   Machine learning 
+-   Statistical automation
+-   Model comparison
+
+
+## Resources {auto-animate="true" background="#89CFF0"}
+
+::: {style="text-align: center; margin-top: 2em"}
+-   [broom documentation](https://broom.tidymodels.org/)
+
+:::
+
+
+## Thank You {auto-animate="true" background="#89CFF0"}
+
+::: {style="margin-top: 200px; font-size: 2em; text-align: center;"}
+Questions?
+:::
