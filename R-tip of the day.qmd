@@ -155,7 +155,7 @@ augment(model_log) |>
 :::
 
 
-## Real-World Uses {auto-animate="true" background="#89CFF0"}
+## Real World Uses {auto-animate="true" background="#89CFF0"}
 
 -   Machine learning 
 -   Statistical automation
